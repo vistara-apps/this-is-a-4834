@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { Sparkles, Lightbulb, FileText, BarChart, Code, Rocket, TrendingUp } from 'lucide-react';
+import { Sparkles, Lightbulb, FileText, BarChart3, Code2, Rocket, TrendingUp, Crown } from 'lucide-react';
 import { Card, CardContent, CardHeader } from './ui/Card';
 import { Button } from './ui/Button';
 import { Input, TextArea } from './ui/Input';
 import { Badge } from './ui/Badge';
 import { Modal } from './ui/Modal';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/Tabs';
 import { useApp } from '../context/AppContext';
 import { BusinessIdea } from '../types';
-import { generateBusinessIdea } from '../services/aiService';
+import { generateBusinessIdea, generateMarketResearch, generatePitchDeck, generateTechStack } from '../services/aiService';
+import { stripeService } from '../services/stripeService';
 
 export function AITools() {
   const { state, dispatch } = useApp();
@@ -15,6 +17,9 @@ export function AITools() {
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
   const [prompt, setPrompt] = useState('');
   const [generatedIdea, setGeneratedIdea] = useState<BusinessIdea | null>(null);
+  const [generatedContent, setGeneratedContent] = useState<string>('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [activeTab, setActiveTab] = useState('business-idea');
 
   const tools = [
     {
@@ -24,16 +29,18 @@ export function AITools() {
       icon: Lightbulb,
       color: 'text-yellow-400',
       bgColor: 'bg-yellow-400/20',
-      available: true
+      available: true,
+      tier: 'free'
     },
     {
       id: 'market_research',
       title: 'Market Research Assistant',
       description: 'Get instant market analysis and competitor insights',
-      icon: BarChart,
+      icon: BarChart3,
       color: 'text-blue-400',
       bgColor: 'bg-blue-400/20',
-      available: user?.subscriptionTier !== 'free'
+      available: user?.subscriptionTier !== 'free',
+      tier: 'pro'
     },
     {
       id: 'pitch_deck',
@@ -42,16 +49,18 @@ export function AITools() {
       icon: FileText,
       color: 'text-green-400',
       bgColor: 'bg-green-400/20',
-      available: user?.subscriptionTier !== 'free'
+      available: user?.subscriptionTier !== 'free',
+      tier: 'pro'
     },
     {
       id: 'tech_stack',
       title: 'Tech Stack Advisor',
       description: 'Get personalized technology recommendations for your startup',
-      icon: Code,
+      icon: Code2,
       color: 'text-purple-400',
       bgColor: 'bg-purple-400/20',
-      available: user?.subscriptionTier === 'premium'
+      available: user?.subscriptionTier === 'premium',
+      tier: 'premium'
     }
   ];
 
@@ -71,14 +80,54 @@ export function AITools() {
     }
   };
 
-  const handleToolClick = (toolId: string, available: boolean) => {
+  const handleGenerateContent = async (toolId: string) => {
+    if (!prompt.trim()) return;
+
+    setIsGenerating(true);
+    setGeneratedContent('');
+
+    try {
+      let content = '';
+      
+      switch (toolId) {
+        case 'market_research':
+          content = await generateMarketResearch(prompt);
+          break;
+        case 'pitch_deck':
+          content = await generatePitchDeck(prompt);
+          break;
+        case 'tech_stack':
+          content = await generateTechStack(prompt, 'moderate');
+          break;
+        default:
+          throw new Error('Unknown tool');
+      }
+      
+      setGeneratedContent(content);
+    } catch (error) {
+      console.error(`Failed to generate ${toolId}:`, error);
+      setGeneratedContent('Failed to generate content. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleToolClick = (toolId: string, available: boolean, tier: string) => {
     if (!available) {
-      // Show upgrade modal
+      // Check subscription limits and show appropriate message
+      const limits = stripeService.getSubscriptionLimits(user?.subscriptionTier || 'free');
+      
+      if (tier === 'pro' && user?.subscriptionTier === 'free') {
+        alert('This feature requires a Pro or Premium subscription. Upgrade to unlock advanced AI tools!');
+      } else if (tier === 'premium' && user?.subscriptionTier !== 'premium') {
+        alert('This feature requires a Premium subscription. Upgrade to Premium for unlimited access!');
+      }
       return;
     }
     setSelectedTool(toolId);
     setPrompt('');
     setGeneratedIdea(null);
+    setGeneratedContent('');
   };
 
   const getDifficultyColor = (difficulty: string) => {
@@ -115,7 +164,7 @@ export function AITools() {
                 className={`cursor-pointer transition-all hover:scale-105 ${
                   !tool.available ? 'opacity-60' : ''
                 }`}
-                onClick={() => handleToolClick(tool.id, tool.available)}
+                onClick={() => handleToolClick(tool.id, tool.available, tool.tier)}
               >
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between mb-4">
@@ -123,7 +172,13 @@ export function AITools() {
                       <Icon className={`w-6 h-6 ${tool.color}`} />
                     </div>
                     {!tool.available && (
-                      <Badge variant="outline">Pro</Badge>
+                      <Badge variant="outline" className="capitalize">
+                        {tool.tier === 'premium' ? (
+                          <><Crown className="w-3 h-3 mr-1" />{tool.tier}</>
+                        ) : (
+                          tool.tier
+                        )}
+                      </Badge>
                     )}
                   </div>
                   <h3 className="text-lg font-semibold text-dark-text mb-2">{tool.title}</h3>
@@ -241,6 +296,65 @@ export function AITools() {
                         <Badge key={index} variant="default">{tech}</Badge>
                       ))}
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </Modal>
+
+        {/* Other AI Tools Modal */}
+        <Modal
+          isOpen={selectedTool !== null && selectedTool !== 'business_idea'}
+          onClose={() => setSelectedTool(null)}
+          title={tools.find(t => t.id === selectedTool)?.title || 'AI Tool'}
+          className="max-w-4xl"
+        >
+          <div className="space-y-4">
+            <div>
+              <Input
+                label="Describe your business idea or topic"
+                placeholder="e.g., AI-powered study assistant for college students..."
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                variant="textarea"
+                className="min-h-[100px]"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <Button variant="ghost" onClick={() => setSelectedTool(null)}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={() => selectedTool && handleGenerateContent(selectedTool)} 
+                disabled={!prompt.trim() || isGenerating}
+              >
+                {isGenerating ? 'Generating...' : `Generate ${tools.find(t => t.id === selectedTool)?.title}`}
+              </Button>
+            </div>
+
+            {generatedContent && (
+              <Card className="mt-6">
+                <CardHeader>
+                  <h3 className="text-lg font-semibold text-dark-text">Generated Content</h3>
+                </CardHeader>
+                <CardContent>
+                  <div className="prose prose-sm max-w-none">
+                    <pre className="whitespace-pre-wrap text-sm text-dark-text bg-dark-bg p-4 rounded-lg overflow-auto max-h-96">
+                      {generatedContent}
+                    </pre>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedContent);
+                        alert('Content copied to clipboard!');
+                      }}
+                    >
+                      Copy to Clipboard
+                    </Button>
                   </div>
                 </CardContent>
               </Card>

@@ -1,13 +1,20 @@
-import React from 'react';
-import { Home, Users, Sparkles, Settings, Plus, Hash } from 'lucide-react';
+import React, { useState } from 'react';
+import { Home, Users, Sparkles, Settings, Plus, Hash, Crown, LogOut } from 'lucide-react';
 import { Avatar } from './ui/Avatar';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 import { useApp } from '../context/AppContext';
+import { AuthModal } from './auth/AuthModal';
+import { SubscriptionModal } from './subscription/SubscriptionModal';
+import { CreateCommunityModal } from './community/CreateCommunityModal';
+import { authService } from '../services/authService';
 
 export function Sidebar() {
   const { state, dispatch } = useApp();
   const { user, communities, activeCommunity, showAITools } = state;
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [showCreateCommunityModal, setShowCreateCommunityModal] = useState(false);
 
   const joinedCommunities = communities.filter(c => 
     user?.joinedCommunities.includes(c.communityId)
@@ -19,6 +26,19 @@ export function Sidebar() {
 
   const handleAIToolsClick = () => {
     dispatch({ type: 'TOGGLE_AI_TOOLS' });
+  };
+
+  const handleLogout = async () => {
+    await authService.logout();
+    window.location.reload();
+  };
+
+  const handleCreateCommunity = () => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+    setShowCreateCommunityModal(true);
   };
 
   return (
@@ -65,7 +85,13 @@ export function Sidebar() {
             <h3 className="text-sm font-semibold text-dark-textMuted uppercase tracking-wide">
               Communities
             </h3>
-            <Button variant="ghost" size="sm" className="p-1">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="p-1"
+              onClick={handleCreateCommunity}
+              title="Create Community"
+            >
               <Plus className="w-4 h-4" />
             </Button>
           </div>
@@ -120,24 +146,88 @@ export function Sidebar() {
 
       {/* User Profile */}
       <div className="p-4 border-t border-dark-border">
-        <div className="flex items-center space-x-3">
-          <Avatar 
-            fallback={user?.avatar || user?.username.slice(0, 2).toUpperCase() || 'U'} 
-            status="online" 
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-dark-text truncate">{user?.username}</p>
-            <div className="flex items-center space-x-2">
-              <Badge variant={user?.subscriptionTier === 'free' ? 'outline' : 'default'}>
-                {user?.subscriptionTier}
-              </Badge>
+        {user ? (
+          <div className="space-y-3">
+            <div className="flex items-center space-x-3">
+              <Avatar 
+                fallback={user.avatar || user.username.slice(0, 2).toUpperCase()} 
+                status="online" 
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-dark-text truncate">{user.username}</p>
+                <div className="flex items-center space-x-2">
+                  <Badge 
+                    variant={user.subscriptionTier === 'free' ? 'outline' : 'default'}
+                    className={user.subscriptionTier === 'premium' ? 'bg-gradient-to-r from-purple-500 to-pink-500' : ''}
+                  >
+                    {user.subscriptionTier === 'premium' && <Crown className="w-3 h-3 mr-1" />}
+                    {user.subscriptionTier}
+                  </Badge>
+                </div>
+              </div>
+              <div className="flex space-x-1">
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setShowSubscriptionModal(true)}
+                  title="Manage Subscription"
+                >
+                  <Settings className="w-4 h-4" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={handleLogout}
+                  title="Logout"
+                >
+                  <LogOut className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
+            
+            {user.subscriptionTier === 'free' && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-xs"
+                onClick={() => setShowSubscriptionModal(true)}
+              >
+                <Crown className="w-3 h-3 mr-1" />
+                Upgrade to Pro
+              </Button>
+            )}
           </div>
-          <Button variant="ghost" size="sm">
-            <Settings className="w-4 h-4" />
-          </Button>
-        </div>
+        ) : (
+          <div className="space-y-2">
+            <Button
+              className="w-full"
+              onClick={() => setShowAuthModal(true)}
+            >
+              Sign In
+            </Button>
+            <p className="text-xs text-center text-dark-textMuted">
+              Join to create communities and access AI tools
+            </p>
+          </div>
+        )}
       </div>
+
+      {/* Modals */}
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        initialMode="login"
+      />
+      
+      <SubscriptionModal
+        isOpen={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+      />
+      
+      <CreateCommunityModal
+        isOpen={showCreateCommunityModal}
+        onClose={() => setShowCreateCommunityModal(false)}
+      />
     </div>
   );
 }
