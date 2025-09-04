@@ -22,7 +22,9 @@ type AppAction =
   | { type: 'ADD_COMMENT'; payload: Omit<Comment, 'commentId' | 'timestamp'> }
   | { type: 'REACT_TO_POST'; payload: { postId: string; reaction: string } }
   | { type: 'ADD_BUSINESS_IDEA'; payload: BusinessIdea }
-  | { type: 'SET_LOADING'; payload: boolean };
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'CREATE_COMMUNITY'; payload: Community }
+  | { type: 'SET_USER'; payload: User | null };
 
 const initialState: AppState = {
   user: mockUser,
@@ -130,6 +132,15 @@ function appReducer(state: AppState, action: AppAction): AppState {
     
     case 'SET_LOADING':
       return { ...state, loading: action.payload };
+    
+    case 'CREATE_COMMUNITY':
+      return {
+        ...state,
+        communities: [action.payload, ...state.communities]
+      };
+    
+    case 'SET_USER':
+      return { ...state, user: action.payload };
     
     default:
       return state;
